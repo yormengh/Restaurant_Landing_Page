@@ -15,12 +15,28 @@ jobs:
       - name: Checkout the files
         uses: actions/checkout@v4
 
+      # Add Node.js setup
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Build the React app
+      - name: Build the app
+        run: npm run build
+
+      # Deploy only the dist folder (build output)
       - name: Deploy to Server
         uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.HOST_DNS }}
           REMOTE_USER: ${{ secrets.EC2_USER }}
+          SOURCE: "dist/"  # Only deploy the build output
           TARGET: ${{ secrets.TARGET_DIR }}
 
       - name: Executing remote ssh commands using ssh key
@@ -32,11 +48,19 @@ jobs:
           script: |
             sudo apt-get -y update
             sudo apt-get install -y apache2
-            sudo systemctl daemon-reload
-            sudo systemctl start apache2
-            sudo systemctl enable apache2
-            cd home
+            
             # Remove existing contents of /var/www/html
             sudo rm -rf /var/www/html/*
-            # Move new files to /var/www/html
-            sudo mv * /var/www/html
+            
+            # Move build files to /var/www/html
+            sudo mv ${{ secrets.TARGET_DIR }}/dist/* /var/www/html/
+            
+            # Set proper permissions
+            sudo chown -R www-data:www-data /var/www/html
+            sudo chmod -R 755 /var/www/html
+            
+            # Enable Apache rewrite module for SPA routing
+            sudo a2enmod rewrite
+            
+            # Restart Apache
+            sudo systemctl restart apache2
